@@ -6,7 +6,6 @@ db_path = 'face_encodings.db'
 
 # Initialize SimpleFacerec and load encodings from SQLite
 sfr = SimpleFacerec(db_path=db_path)
-
 # Load Camera
 cap = cv2.VideoCapture(0)
 
