@@ -8,6 +8,8 @@ from datetime import datetime
 import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk
+import time
+import config
 
 class FaceCapture:
     def __init__(self, db_path='face_encodings.db', images_path='images/'):
@@ -146,7 +148,7 @@ class FaceCapture:
         # Initialize SimpleFacerec and load encodings from SQLite
         known_face_names, known_face_encodings = load_encodings_from_db(self.db_path)
         cap = cv2.VideoCapture(0)
-        attended_users = set()
+        last_attendance_time = {}
 
         # Open a new window for face detection
         detect_window = tk.Tk()
@@ -161,7 +163,7 @@ class FaceCapture:
         label_video.pack()
 
         def show_detect_frame():
-            def detect_known_faces(known_face_encodings,known_face_names,frame, frame_resizing,db_path,attended_users):
+            def detect_known_faces(known_face_encodings, known_face_names, frame, frame_resizing, db_path, last_attendance_time):
                 def mark_attendance(db_path, name):
                     conn = sqlite3.connect(db_path)
                     cursor = conn.cursor()
@@ -178,22 +180,21 @@ class FaceCapture:
                 small_frame = cv2.resize(frame, (0, 0), fx=frame_resizing, fy=frame_resizing)
                 rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
                 face_locations = face_recognition.face_locations(rgb_small_frame)
-                face_encodings = face_recognition.face_encodings(
-                    rgb_small_frame, face_locations)
+                face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
                 face_names = []
+                current_time = time.time()
                 for face_encoding in face_encodings:
-                    matches = face_recognition.compare_faces(
-                        known_face_encodings, face_encoding)
+                    matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
                     name = "Unknown"
 
-                    face_distances = face_recognition.face_distance(
-                        known_face_encodings, face_encoding)
+                    face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
                     best_match_index = np.argmin(face_distances)
                     if matches[best_match_index] and face_distances[best_match_index] < 0.45:
                         name = known_face_names[best_match_index]
-                        if face_distances[best_match_index] < 0.3 and name not in attended_users:
-                            attended_users.add(name)
-                            mark_attendance(db_path, name)
+                        if face_distances[best_match_index] < 0.3:
+                            if name not in last_attendance_time or (current_time - last_attendance_time[name]) > config.waitTime:
+                                last_attendance_time[name] = current_time
+                                mark_attendance(db_path, name)
                     face_names.append(name)
                 face_locations = np.array(face_locations)
                 face_locations = face_locations / frame_resizing
@@ -201,8 +202,7 @@ class FaceCapture:
 
             ret, frame = cap.read()
             if ret:
-                face_locations, face_names = detect_known_faces(
-                    known_face_encodings, known_face_names, frame, 0.25, self.db_path, attended_users)
+                face_locations, face_names = detect_known_faces(known_face_encodings, known_face_names, frame, 0.25, self.db_path, last_attendance_time)
                 for face_loc, name in zip(face_locations, face_names):
                     y1, x2, y2, x1 = face_loc
                     cv2.putText(frame, name, (x1, y1 - 10), cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 200), 2)
