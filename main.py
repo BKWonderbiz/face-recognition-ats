@@ -9,6 +9,8 @@ import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk
 import random
+import time
+import config
 
 class FaceCapture:
     def __init__(self, server, user, password, database, images_path='images/'):
@@ -164,7 +166,7 @@ class FaceCapture:
         # Initialize SimpleFacerec and load encodings from MS SQL
         known_face_id, known_face_names, known_face_encodings = load_encodings_from_db(self.conn)
         cap = cv2.VideoCapture(0)
-        attended_users = set()
+        last_attendance_time = {}
 
         # Open a new window for face detection
         detect_window = tk.Tk()
@@ -198,18 +200,23 @@ class FaceCapture:
                 rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
                 face_locations = face_recognition.face_locations(rgb_small_frame)
                 face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+                face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
                 face_names = []
+                current_time = time.time()
                 for face_encoding in face_encodings:
+                    matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
                     matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
                     name = "Unknown"
 
                     face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
+                    face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
                     best_match_index = np.argmin(face_distances)
                     if matches[best_match_index] and face_distances[best_match_index] < 0.45:
                         name = known_face_names[best_match_index]
-                        if face_distances[best_match_index] < 0.3 and name not in attended_users:
-                            attended_users.add(name)
-                            mark_attendance(conn, name)
+                        if face_distances[best_match_index] < 0.3:
+                            if name not in last_attendance_time or (current_time - last_attendance_time[name]) > config.waitTime:
+                                last_attendance_time[name] = current_time
+                                mark_attendance(conn, name)
                     face_names.append(name)
                 face_locations = np.array(face_locations)
                 face_locations = face_locations / frame_resizing

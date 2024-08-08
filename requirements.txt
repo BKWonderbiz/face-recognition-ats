@@ -3,7 +3,7 @@ cmake
 colorama
 face-recognition
 face_recognition_models
-numpy
+numpy== 1.23.5
 opencv-python
 pillow
 pymssql
