@@ -6,4 +6,5 @@ face_recognition_models
 numpy
 opencv-python
 pillow
+pymssql
 
