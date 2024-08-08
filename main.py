@@ -10,16 +10,14 @@ from tkinter import messagebox
 from PIL import Image, ImageTk
 import random
 import time
-import config
+from config import cameraType,waitTime,server,port,password,user,database
+import pyodbc
 
 class FaceCapture:
-    def __init__(self, server, user, password, database, images_path='images/'):
-        self.server = server
-        self.user = user
-        self.password = password
-        self.database = database
-        self.images_path = images_path
-        self.conn = pymssql.connect(server, user, password, database)
+    def __init__(self, connection_string, images_path='images/'):
+        self.connection_string = connection_string
+        self.conn = pyodbc.connect(connection_string)
+        self.images_path=images_path
         
         self.root = tk.Tk()
         self.root.title("Employee Verification")
@@ -40,16 +38,12 @@ class FaceCapture:
         if not employee_id:
             messagebox.showwarning("Input Error", "Employee ID cannot be empty!")
             return
-
         cursor = self.conn.cursor()
-        cursor.execute('SELECT Id FROM EmployeeDetails WHERE UserId = %s', (employee_id,))
+        cursor.execute('SELECT Id,FirstName FROM EmployeeDetails WHERE UserId = (?)', (employee_id,))
         result = cursor.fetchone()
-        cursor.execute('SELECT FirstName FROM EmployeeDetails WHERE UserId = %s', (employee_id,))
-        EmployeeName = cursor.fetchone()
-
         if result:
             self.root.destroy()
-            self.start_capture_window(employee_id, EmployeeName[0])
+            self.start_capture_window(employee_id,result[1])
         else:
             messagebox.showerror("Error", "Employee ID not found!")
 
@@ -93,38 +87,28 @@ class FaceCapture:
       
     def capture_face(self, employee_id):
         self.employee_id = employee_id
-
         person_dir = os.path.join(self.images_path, str(employee_id))
         os.makedirs(person_dir, exist_ok=True)
-
         ret, frame = self.cap.read()
         if ret:
-            # Save the captured image
             filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{random.randint(1,9999)}.jpg"
             img_path = os.path.join(person_dir, filename)
             cv2.imwrite(img_path, frame)
             print(f"Captured and saved {filename}")
             self.captured_images.append(img_path)
-            # i=i+1
         else:
             messagebox.showerror("Capture Error", "Failed to capture image.")
 
     def save_encodings(self, employee_id):
         self.employee_id = employee_id
 
-        def check_encodings_exist(conn, employee_id):
-            cursor = conn.cursor()
-            cursor.execute('SELECT FaceEncoding FROM EmployeeDetails WHERE UserId = %s', (employee_id,))
-            result = cursor.fetchone()
-            return result is not None and result[0] is not None
-
         def process_and_save_encodings(img_paths, employee_id, conn):
             def save_encoding_to_db(conn, employee_id, encoding):
                 cursor = conn.cursor()
                 cursor.execute('''
                     UPDATE EmployeeDetails
-                    SET FaceEncoding = %s
-                    WHERE UserId = %s
+                    SET FaceEncoding = (?)
+                    WHERE UserId = (?)
                 ''', (pickle.dumps(encoding), employee_id))
                 conn.commit()
                 print(f"Encoding for {employee_id} updated in the database.")
@@ -157,9 +141,9 @@ class FaceCapture:
 
         def load_encodings_from_db(conn):
             cursor = conn.cursor()
-            cursor.execute('SELECT FirstName, FaceEncoding FROM EmployeeDetails')
+            cursor.execute('SELECT UserId, FirstName, FaceEncoding FROM EmployeeDetails WHERE DATALENGTH(FaceEncoding) > DATALENGTH(0x)')
             rows = cursor.fetchall()
-            return [row[0] for row in rows], [row[0] for row in rows], [pickle.loads(row[1]) for row in rows]
+            return [row[0] for row in rows], [row[1] for row in rows], [pickle.loads(row[2]) for row in rows]
 
         self.root.destroy()
 
@@ -181,20 +165,14 @@ class FaceCapture:
         label_video.pack()
 
         def show_detect_frame():
-            def detect_known_faces(known_face_encodings, known_face_names, frame, frame_resizing, conn, attended_users):
-                def mark_attendance(conn, name):
+            def detect_known_faces( known_face_id, known_face_names, known_face_encodings, frame, frame_resizing, conn):
+                def mark_attendance(conn, userId):
                     cursor = conn.cursor()
-                    cursor.execute('SELECT UserId FROM EmployeeDetails WHERE FirstName = %s', (name,))
-                    result = cursor.fetchone()
-                    if result:
-                        user_id = result[0]
-                        attendance_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')  # Current time in the desired format
-                        cursor.execute('''
-                            INSERT INTO AttendanceLogs (UserId, AttendanceLogTime, CheckType) 
-                            VALUES (%s, %s, 'IN')
-                        ''', (user_id, attendance_time))
-                        conn.commit()
-                        print(f"Marked Attendance for {name}")
+                    cursor.execute('''
+                       INSERT INTO AttendanceLogs (UserId, AttendanceLogTime, CheckType) Values (?,?,?)''',
+                       (userId, datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'),cameraType,))
+                    conn.commit()
+                    print(f"Marked Attendance for {userId}")
 
                 small_frame = cv2.resize(frame, (0, 0), fx=frame_resizing, fy=frame_resizing)
                 rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
@@ -212,11 +190,12 @@ class FaceCapture:
                     face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
                     best_match_index = np.argmin(face_distances)
                     if matches[best_match_index] and face_distances[best_match_index] < 0.45:
-                        name = known_face_names[best_match_index]
+                        id = known_face_id[best_match_index]
+                        name= known_face_names[best_match_index]
                         if face_distances[best_match_index] < 0.3:
-                            if name not in last_attendance_time or (current_time - last_attendance_time[name]) > config.waitTime:
+                            if name not in last_attendance_time or (current_time - last_attendance_time[name]) > waitTime:
                                 last_attendance_time[name] = current_time
-                                mark_attendance(conn, name)
+                                mark_attendance(conn, id)
                     face_names.append(name)
                 face_locations = np.array(face_locations)
                 face_locations = face_locations / frame_resizing
@@ -224,7 +203,7 @@ class FaceCapture:
 
             ret, frame = cap.read()
             if ret:
-                face_locations, face_names = detect_known_faces(known_face_encodings, known_face_names, frame, 0.25, self.conn, attended_users)
+                face_locations, face_names = detect_known_faces( known_face_id, known_face_names, known_face_encodings, frame, 0.25, self.conn)
                 for face_loc, name in zip(face_locations, face_names):
                     y1, x2, y2, x1 = face_loc
                     cv2.putText(frame, name, (x1, y1 - 10), cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 200), 2)
@@ -265,5 +244,6 @@ class FaceCapture:
         self.root.destroy()
 
 if __name__ == "__main__":
-    face_capture = FaceCapture(server='DESKTOP-KUTTPQR', user='sa', password='User123', database='AttendanceTrackingSystem')
+    connection_string = f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server},{port};DATABASE={database};UID={user};PWD={password}'
+    face_capture = FaceCapture(connection_string)
     face_capture.root.mainloop()
