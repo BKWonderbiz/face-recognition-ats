@@ -22,7 +22,7 @@ class FaceCapture:
         self.root = tk.Tk()
         self.root.title("Employee Verification")
 
-        self.root.geometry("400x200")
+        self.root.geometry("400x300")
         self.root.configure(bg='#2E2E2E')
 
         # UI Elements for Employee ID Input
@@ -32,6 +32,9 @@ class FaceCapture:
         self.id_entry.pack(pady=10, ipadx=5, ipady=5)
         self.check_button = tk.Button(self.root, text="Check Employee", font=('Helvetica', 12), bg='#4A4A4A', fg='#FFFFFF', command=self.check_employee)
         self.check_button.pack(pady=10, ipadx=5, ipady=5)
+
+        self.detect_button = tk.Button(self.root, text="Detect Employees", font=('Helvetica', 12), bg='#4A4A4A', fg='#FFFFFF', command=self.detect_employees)
+        self.detect_button.pack(pady=10, ipadx=5, ipady=5)
 
     def check_employee(self):
         employee_id = self.id_entry.get().strip()
@@ -78,9 +81,10 @@ class FaceCapture:
         
         self.save_button = tk.Button(self.frame_right_info, text="Save Encodings", font=('Helvetica', 12), bg='#4A4A4A', fg='#FFFFFF', command=lambda: self.save_encodings(employee_id))
         self.save_button.pack(pady=10, ipadx=5, ipady=5)
-        
+
         self.detect_button = tk.Button(self.frame_right_info, text="Detect Employees", font=('Helvetica', 12), bg='#4A4A4A', fg='#FFFFFF', command=self.detect_employees)
         self.detect_button.pack(pady=10, ipadx=5, ipady=5)
+        
 
         self.captured_images = []
         self.show_frame()
