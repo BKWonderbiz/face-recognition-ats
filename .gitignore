@@ -8,3 +8,6 @@ __pycache__
 face_encodings.db
 /images
 config.py
+/build
+/dist
+*.spec
